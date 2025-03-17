@@ -21,7 +21,7 @@ green_low_byte = 0x09
 
 def getAndUpdateColour():
     last_color = None
-    threshold = 0.49 
+
     while True:
 	# Read the data from the sensor
         # Insert code here
