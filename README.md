@@ -29,7 +29,7 @@ This repository contains a ROS 2 node for autonomous navigation, obstacle avoida
 
 ## Dependencies
 
-- ROS 2 (tested with Humble or Foxy)
+- ROS 2
 - Python 3.8+
 - `rclpy`, `geometry_msgs`, `sensor_msgs`
 - `gpiozero` (for LED)
