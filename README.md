@@ -10,7 +10,7 @@ This repository contains a ROS 2 node for autonomous navigation, obstacle avoida
 - **Victim Detection via RGB Sensor**  
   Uses the ISL29125 RGB sensor to identify red-colored objects on the ground as potential victims. When a victim is detected, an onboard LED is activated.
 
-- **Speed Optimization**  
+- **Dynamic speeds**  
   Linear and angular speeds are dynamically adjusted based on proximity to obstacles using linear interpolation.
 
 - **Collision Logging**  

@@ -23,9 +23,9 @@ class Turtlebot3ObstacleDetection(Node):
         print('\n##############################################')
         print('##################### MOB ####################')
         print('##############################################\n')
-    # -----------------------------------------------------------------------
-    # Initialize
-    # -----------------------------------------------------------------------
+
+    ######################################################################################################
+    ########################################## Initialize ################################################
         self.scan_ranges = [] # Prepare to store incoming LaserScan data and track if we've received any
         self.has_scan_received = False
         # Set up QoS, Publishers, Subscribers
@@ -46,9 +46,9 @@ class Turtlebot3ObstacleDetection(Node):
         self.led_on = False
         self.led_counter = 0
         
-    # -----------------------------------------------------------------------
-    # Logging
-    # -----------------------------------------------------------------------
+   ################################################################################
+   ############################ Metric logging ####################################
+
         self.metric_linear = [] # Store linear speeds in an array
         self.metric_angular = [] # Store angular speeds in an array
         self.metric_collisions = 0 # Store collision count
@@ -59,10 +59,9 @@ class Turtlebot3ObstacleDetection(Node):
         print("Robot initialized. Metrics will be displayed when shutting down.") # Print to terminal
         atexit.register(self._print_final_metrics) # Register shutdown print
 
-    # -----------------------------------------------------------------------
-    # Variables
-    # -----------------------------------------------------------------------
-        # Distances
+   #################################################################################
+   ############################# Variables and constants ##############################
+        # Distances thresholds
         self.distance_critical = 0.15 # Distance before something is considered in critical range
         self.distance_start_turning = 0.33 # Distance to start turning
         self.distance_is_trapped = 0.20 # Distance to determine wether trapped
@@ -74,13 +73,13 @@ class Turtlebot3ObstacleDetection(Node):
 
         # Factors
         self.is_blocked_percentage = 0.5 # Percentage to be blocked for returning true
-        self.side_score_value_norm_factor = 0.8 # Side score factor for normalized value
-        self.side_score_value_avg_factor = 0.2 # Side score factor for average value
+        self.count_weight = 0.8 # Side score factor for normalized value
+        self.avg_weight = 0.2 # Side score factor for average value
         self.speed_factor = 1.1 # Multiply speed
 
         # Thresholds
-        self.compare_score_pairs_threshold = 0.4 # Threshold before something is a good pair
-        self.compare_score_pairs_hysteresis = 0.05 # Buffer value of score pairs
+        self.score_threshold = 0.4 # Threshold before something is a good pair
+        self.pairs_hysteresis = 0.05 # Buffer value of score pairs
         self.speed_factor_threshold = 1 # Max angular speed for speed_factor to be applied
 
         # Segments: adjust these to get the exact indices you want!
@@ -94,38 +93,41 @@ class Turtlebot3ObstacleDetection(Node):
         self.led_cycles = 12 # number of cycles led will be on
 
         # History
-        self.history = { # used as readings for invalid readings
-            'sl0': deque(maxlen=5),
-            'sl1': deque(maxlen=5),
-            'sl2': deque(maxlen=5),
-            'sl3': deque(maxlen=5),
-            'sl4': deque(maxlen=5),
-            'sr0': deque(maxlen=5),
-            'sr1': deque(maxlen=5),
-            'sr2': deque(maxlen=5),
-            'sr3': deque(maxlen=5),
-            'sr4': deque(maxlen=5),
-            'front': deque(maxlen=5),
-            'front_left': deque(maxlen=5),
-            'front_right': deque(maxlen=5),
+        self.history = { # Backup readings when no valid data
+            'sl0': deque(maxlen=3),
+            'sl1': deque(maxlen=3),
+            'sl2': deque(maxlen=3),
+            'sl3': deque(maxlen=3),
+            'sl4': deque(maxlen=3),
+            'sr0': deque(maxlen=3),
+            'sr1': deque(maxlen=3),
+            'sr2': deque(maxlen=3),
+            'sr3': deque(maxlen=3),
+            'sr4': deque(maxlen=3),
+            'front': deque(maxlen=3),
+            'front_left': deque(maxlen=3),
+            'front_right': deque(maxlen=3),
 
         }
         self.dominating_color = None
         
         # Segments
         self.segments = {
-            # main groups
-            'front'       : [0, 1, -1, -2],
+            # main groups: Used for dynamic speeds and trapping
+            'front'       : [0, -1, 1, -2],
             'front_left'  : [2, 3, 4, 5],
             'front_right' : [-3, -4, -5, -6],
 
-            # fine slices
+            # fine slices: Used for turning logic
+            # Front
             'sl0' : [0, 1],
+            'sr0' : [-1, -2],
+            # Left
             'sl1' : [1, 2, 3],
             'sl2' : [3, 4, 5],
             'sl3' : [5, 6, 7],
             'sl4' : [7, 8],
-            'sr0' : [-1, -2],
+            # Right
             'sr1' : [-2, -3, -4],
             'sr2' : [-4, -5, -6],
             'sr3' : [-6, -7, -8],
@@ -138,7 +140,7 @@ class Turtlebot3ObstacleDetection(Node):
     # States
     # -----------------------------------------------------------------------
         self.collision_recent = False # Wether a recent collision has occured
-        self.prev_direction = 'FORWARD' # Used to store previous direction, initialized to forward
+        self.prev_direction = 'LEFT' # Used to store previous direction, initialized to LEFT
 
 # -----------------------------------------------------------------------------------------------------------------------------------------
 # -----------------------------------------------------------------------------------------------------------------------------------------
@@ -196,7 +198,7 @@ class Turtlebot3ObstacleDetection(Node):
             return self.speed_linear_max
     
         # Linear interpolation, computes ratio for linear speed
-        ratio = (min_dist - self.distance_critical) / (self.distance_start_turning - self.distance_critical)
+        ratio = np.clip((min_dist - self.distance_critical) / (self.distance_start_turning - self.distance_critical))
         return ratio * self.speed_linear_max # return max speed multiplied by ratio
 
     def dynamic_ang_speed(self, distance):
@@ -216,11 +218,11 @@ class Turtlebot3ObstacleDetection(Node):
             ratio = np.clip((self.distance_start_turning - min(valid)) / (self.distance_start_turning - self.distance_critical ), 0.0, 1.0)
             return ratio * self.speed_angular_max
 
-    def is_blocked(self, front, safe_distance): # Helper function, used in is_trapped()
+    def is_blocked(self, segment, safe_distance): # Helper function, used in is_trapped()
         # Compute amount of elements that have to be blocked
-        threshold = len(front) * self.is_blocked_percentage # 50%
+        threshold = len(segment) * self.is_blocked_percentage # 50%
         # Count the number of elements less than the safe distance
-        count = sum(1 for r in front if r < safe_distance)
+        count = sum(1 for r in segment if r < safe_distance)
         # Check if the count is greater than or equal to the threshold
         return count >= threshold
 
@@ -241,23 +243,24 @@ class Turtlebot3ObstacleDetection(Node):
                 return True
         return False # else not trapped
 
-    def compare_score_pairs(self, dist):
-        pairs = [('sl0', 'sr0'), ('sl1', 'sr1'), ('sl2', 'sr2'), ('sl3', 'sr3'), ('sl4', 'sr4')] # Store pairs in array
+    def compare_scores(self, dist):
+        # Store tuple pairs in array
+        pairs = [('sl0', 'sr0'), ('sl1', 'sr1'), ('sl2', 'sr2'), ('sl3', 'sr3'), ('sl4', 'sr4')]
 
-        for left, right in pairs:
+        for left, right in pairs: # Compare pairs
             l_score = self.side_score_value(dist[left], left) # left score is computed
             r_score = self.side_score_value(dist[right], right) # right score is computed
 
             # If both are good
-            if l_score > self.compare_score_pairs_threshold and r_score > self.compare_score_pairs_threshold:
-                if abs(l_score - r_score) < self.compare_score_pairs_hysteresis:
+            if l_score > self.pairs_threshold and r_score > self.pairs_threshold:
+                if abs(l_score - r_score) < self.pair_hysteresis:
                     return self.prev_direction  # Keep direction if below hystersis
                 return 'LEFT' if l_score > r_score else 'RIGHT' # else return highest
 
-            elif l_score > self.compare_score_pairs_threshold:
+            elif l_score > self.pairs_threshold:
                 return 'LEFT' # left is better; return left
 
-            elif r_score > self.compare_score_pairs_threshold:
+            elif r_score > self.pairs_threshold:
                 return 'RIGHT' # right is better; return right
 
         return 'LEFT' # fallback; go left
@@ -267,25 +270,27 @@ class Turtlebot3ObstacleDetection(Node):
             self.set_speed(dist['front'], 'TRAPPED')
             return
 
-        direction = self.compare_score_pairs(dist) # Determine best side
+        direction = self.compare_scores(dist) # Determine best side
         self.prev_direction = direction  # Save best side
         self.set_speed(dist['front'], direction) # turn towards best side
 
     def side_score_value(self, dist, name):
+
         valid = [r for r in dist if not isnan(r) and not isinf(r)] # Check wether valid
+        
         if not valid and name in self.history and self.history[name]:
             valid = self.history[name] # Use history if invalid
 
         if valid: # Compute score for side
-            count = sum(1 for r in valid if r >= 0.4)
+            count = sum(1 for r in valid if r >= self.distance_sidescore) # Count number of elements above threshold
             norm_count = count / len(valid)
             avg = sum(valid) / len(valid)
-            score = (self.side_score_value_norm_factor * norm_count) + (self.side_score_value_avg_factor * avg)
+            score = (self.count_weight * norm_count) + (self.avg_weight * avg)
 
-            if dist and name in self.history: # Append to history if valid data to add
-                self.history[name].append(score)
+            if name in self.history: # Append to history if valid data to add
+                self.history[name].append(valid)
 
-            return score # Return computed score
+            return score # Return computed scoretwis
 
         return 0.0 # Fallback; return 0.0 if nothing is computed
 
@@ -299,9 +304,7 @@ class Turtlebot3ObstacleDetection(Node):
         twist.linear.x = lin_speed
         
         # Set speed depending on input parameter
-        if direction == 'FORWARD':
-            lin_speed = lin_speed
-        elif direction == 'LEFT':
+        if direction == 'LEFT':
             twist.angular.z = ang_speed
         elif direction == 'RIGHT':
             twist.angular.z = -ang_speed
