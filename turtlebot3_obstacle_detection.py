@@ -78,7 +78,7 @@ class Turtlebot3ObstacleDetection(Node):
         self.speed_factor = 1.1 # Multiply speed
 
         # Thresholds
-        self.score_threshold = 0.4 # Threshold before something is a good pair
+        self.score_threshold = 0.3 # Threshold before something is a good pair
         self.pairs_hysteresis = 0.05 # Buffer value of score pairs
         self.speed_factor_threshold = 1 # Max angular speed for speed_factor to be applied
 
@@ -104,7 +104,7 @@ class Turtlebot3ObstacleDetection(Node):
             'sr2': deque(maxlen=3),
             'sr3': deque(maxlen=3),
             'sr4': deque(maxlen=3),
-            'front': deque(maxlen=3),
+            'front': deque(maxlen=),
             'front_left': deque(maxlen=3),
             'front_right': deque(maxlen=3),
 
@@ -366,21 +366,12 @@ class Turtlebot3ObstacleDetection(Node):
         data = self.bus.read_i2c_block_data(0x44, 0x09, 6)
 
         # left-shift highbyte, merge with lowbyte = 16-bit representation
-        green16bit = (data[1] << 8) | data[0]
-        red16bit = (data[3] << 8) | data[2]
-        blue16bit = (data[5] << 8) | data[4]
+        green = (data[1] << 8) | data[0]
+        red = (data[3] << 8) | data[2]
+        blue = (data[5] << 8) | data[4]
 
-        # 16-bit max is 65535; compute quotient and multiply by 255 for 0-255 scale
-        red = (red16bit / 65535) * 255 
-        green = (green16bit / 65535) * 255 
-        blue = (blue16bit / 65535) * 255 
 
-        # return channels
-        return red, green, blue
-
-    def getAndUpdateColour(self):
-        red, green, blue = self._read_rgb_raw() # compute rgb
-        total_sum = red + green + blue # total sum from all channels
+        total_sum = green + red + blue  # total sum from all channels
 
         if total_sum == 0: # prevents division by 0
             norm_red = norm_green = norm_blue = 0
@@ -388,6 +379,14 @@ class Turtlebot3ObstacleDetection(Node):
             norm_red = (red / total_sum)
             norm_green = (green / total_sum)
             norm_blue = (blue / total_sum) 
+         
+
+        # return channels
+        return norm_red, norm_green, norm_blue
+
+    def getAndUpdateColour(self):
+
+        norm_red, norm_green, norm_blue = self._read_rgb_raw() # compute rgb
 
         print(
             f"Red: {norm_red:.2f}, Green: {norm_green:.2f}, Blue: {norm_blue:.2f}"
