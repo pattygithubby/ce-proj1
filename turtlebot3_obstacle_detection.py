@@ -68,8 +68,8 @@ class Turtlebot3ObstacleDetection(Node):
         self.distance_sidescore = 0.3 # Distance for sidescores
 
         # Speeds
-        self.speed_linear_max = 0.20 # Max linear speed
-        self.speed_angular_max = 2.0 # Max angular speed
+        self.max_linear_speed = 0.20 # Max linear speed
+        self.max_angular_speed = 2.0 # Max angular speed
 
         # Factors
         self.is_blocked_percentage = 0.5 # Percentage to be blocked for returning true
@@ -78,7 +78,7 @@ class Turtlebot3ObstacleDetection(Node):
         self.speed_factor = 1.1 # Multiply speed
 
         # Thresholds
-        self.score_threshold = 0.3 # Threshold before something is a good pair
+        self.pairs_threshold = 0.3 # Threshold before something is a good pair
         self.pairs_hysteresis = 0.05 # Buffer value of score pairs
         self.speed_factor_threshold = 1 # Max angular speed for speed_factor to be applied
 
