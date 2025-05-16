@@ -279,7 +279,8 @@ class Turtlebot3ObstacleDetection(Node):
         valid = [r for r in dist if not isnan(r) and not isinf(r)] # Check wether valid
         
         if not valid and name in self.history and self.history[name]:
-            valid = self.history[name] # Use history if invalid
+            # use latest history if no valid data
+            valid = self.history[name][-1] # use last history
 
         if valid: # Compute score for side
             count = sum(1 for r in valid if r >= self.distance_sidescore) # Count number of elements above threshold
